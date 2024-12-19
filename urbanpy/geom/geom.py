@@ -1,7 +1,7 @@
 import pandas as pd
 import geopandas as gpd
 import osmnx as ox
-from h3 import h3
+import h3
 from rich.progress import track
 from urbanpy.utils import geo_boundary_to_polygon
 from typing import Sequence, Union
@@ -131,42 +131,14 @@ def remove_features(gdf: gpd.GeoDataFrame, bounds: Sequence[float]) -> gpd.GeoDa
 
 
 def gen_hexagons(resolution: int, city: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
-    """
-    Converts an input multipolygon layer to H3 hexagons given a resolution.
+    h3_polygons = []
+    h3_indexes = []
 
-    Parameters
-    ----------
-    resolution: int, 0:15
-        Hexagon resolution, higher values create smaller hexagons.
-
-    city: GeoDataFrame
-        Input city polygons to transform into hexagons.
-
-    Returns
-    -------
-    city_hexagons: GeoDataFrame
-        Hexagon geometry GeoDataFrame (hex_id, geom).
-
-    Examples
-    --------
-    >>> lima = urbanpy.geom.filter_population(pop_lima, poly_lima)
-    >>> lima_hex = urbanpy.geom.gen_hexagons(8, lima)
-    hex	            | geometry
-    888e620e41fffff | POLYGON ((-76.80007 -12.46917, -76.80439 -12.4...))
-    888e62c809fffff | POLYGON ((-77.22539 -12.08663, -77.22971 -12.0...))
-    888e62c851fffff | POLYGON ((-77.20708 -12.08484, -77.21140 -12.0...))
-    888e62c841fffff | POLYGON ((-77.22689 -12.07104, -77.23122 -12.0...))
-    888e62c847fffff | POLYGON ((-77.23072 -12.07929, -77.23504 -12.0...))
-    """
-    # Polyfill the city boundaries
-    h3_polygons = list()
-    h3_indexes = list()
-
-    # Get every polygon in Multipolygon shape
     city_poly = city.explode(index_parts=True).reset_index(drop=True)
 
-    total = len(city_poly)  # For rich library to how much progress is needed
+    total = len(city_poly)
     for _, geo in track(city_poly.iterrows(), total=total):
+        # Use h3.polyfill directly
         hexagons = h3.polyfill(
             geo["geometry"].__geo_interface__, res=resolution, geo_json_conformant=True
         )
@@ -174,12 +146,9 @@ def gen_hexagons(resolution: int, city: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
             h3_polygons.append(geo_boundary_to_polygon(hexagon))
             h3_indexes.append(hexagon)
 
-    # Create hexagon dataframe
     city_hexagons = gpd.GeoDataFrame(h3_indexes, geometry=h3_polygons).drop_duplicates()
     city_hexagons.crs = "EPSG:4326"
-    city_hexagons = city_hexagons.rename(
-        columns={0: "hex"}
-    )  # Format column name for readability
+    city_hexagons = city_hexagons.rename(columns={0: "hex"})
 
     return city_hexagons
 
